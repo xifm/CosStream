@@ -63,22 +63,57 @@ async function fetchAndParseAPI(url) {
         if (json.code === 200 || json.code === 0) {
             const decryptedStr = decryptData(json.data);
             if (decryptedStr) {
-                const parsedData = JSON.parse(decryptedStr); let extractedTotalPages = 0;
+                let parsedData = JSON.parse(decryptedStr); 
+                
+                // 💡 修复点 1：防止后端二次嵌套了字符串 JSON
+                if (parsedData.data && typeof parsedData.data === 'string' && parsedData.data.trim().startsWith('{')) {
+                    try { parsedData.data = JSON.parse(parsedData.data); } catch(e) {}
+                }
+
+                let extractedTotalPages = 0;
                 const searchTargets = [parsedData, parsedData.data, parsedData.info, parsedData.list, parsedData.page, json, json.data];
+                
                 for (let obj of searchTargets) {
                     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) continue;
-                    for (let field of ['last_page', 'total_page', 'totalPage', 'pages', 'pagecount', 'max_page']) { if (obj[field] !== undefined) { extractedTotalPages = Number(obj[field]); break; } }
+                    
+                    // 💡 修复点 2：扩充所有可能的页码字段名
+                    for (let field of ['last_page', 'total_page', 'totalPage', 'pages', 'pagecount', 'page_count', 'max_page']) { 
+                        if (obj[field] !== undefined && obj[field] !== null) { 
+                            extractedTotalPages = Number(obj[field]); 
+                            break; 
+                        } 
+                    }
                     if (extractedTotalPages > 0) break;
-                    for (let field of ['total', 'count', 'totalCount', 'total_num', 'totalcnt']) { if (obj[field] !== undefined) { let totalVal = Number(obj[field]); let limit = Number(obj.limit || 30); if (totalVal > 0) { extractedTotalPages = (Math.ceil(totalVal/limit) < appState.currentPage && totalVal >= appState.currentPage) ? totalVal : Math.ceil(totalVal / limit); break; } } }
+                    
+                    // 💡 修复点 3：补全所有可能的总条数字段（包括驼峰命名）
+                    for (let field of ['total', 'count', 'totalCount', 'total_num', 'totalcnt', 'totalCnt']) { 
+                        if (obj[field] !== undefined && obj[field] !== null) { 
+                            let totalVal = Number(obj[field]); 
+                            let limit = Number(obj.limit || 30); 
+                            if (totalVal > 0) { 
+                                extractedTotalPages = Math.ceil(totalVal / limit); 
+                                break; 
+                            } 
+                        } 
+                    }
                     if (extractedTotalPages > 0) break;
                 }
+                
                 let videoList = Array.isArray(parsedData) ? parsedData : (parsedData.list || (parsedData.data && parsedData.data.list) || parsedData.data || parsedData.info || []);
-                return { list: videoList, maxPage: extractedTotalPages > 0 ? extractedTotalPages : (videoList.length === 30 ? 999 : appState.currentPage) };
+                
+                // 返回更精准的页码
+                return { 
+                    list: videoList, 
+                    maxPage: extractedTotalPages > 0 ? extractedTotalPages : (videoList.length >= 30 ? 999 : appState.currentPage) 
+                };
             }
         }
-    } catch (error) {}
+    } catch (error) {
+        console.error("API 解析异常：", error);
+    }
     return { list: [], maxPage: 0 };
 }
+
 
 async function fetchVideos(pageNumber, isAppend = false) {
     if(appState.isFetching) return; appState.isFetching = true;
