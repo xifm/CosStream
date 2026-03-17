@@ -1,7 +1,9 @@
+// js/main.js 完整最终版
 import { appState, saveCacheToStorage } from './state.js';
 import { expandKeyword, getPureText, formatDuration, formatTime, escapeHtml, createJumpTags, decryptData } from './utils.js';
 import { errImg } from './config.js';
-import './player.js';
+import './player.js'; // ⚠️ 核心：导入播放器模块，使其挂载到 window
+
 // 初始化从偏好加载网格
 if(localStorage.getItem('cos_layout')) window.setColumns(localStorage.getItem('cos_layout'), false);
 
@@ -55,7 +57,6 @@ window.setColumns = function(num, save = true) { const grid = document.getElemen
 window.promptJump = function() { let target = prompt(`当前总数 ${appState.MAX_PAGE===999 ? '未知' : appState.MAX_PAGE} 页，请输入跳转页码：`, appState.currentPage); if(target !== null && target.trim() !== '') { let p = parseInt(target); if(p >= 1 && (p <= appState.MAX_PAGE || appState.MAX_PAGE === 999)) { appState.currentPage = p; appState.currentStateId = 'state_' + Date.now(); pushHistoryState({ type: 'list', category: appState.currentCategory, page: appState.currentPage, searchInput: document.getElementById('search-input').value, stateId: appState.currentStateId }); window.scrollTo({ top: 0, behavior: 'smooth' }); fetchVideos(appState.currentPage, false); } else alert("输入非法！"); } };
 window.changePage = function(delta) { let newPage = appState.currentPage + delta; if (newPage < 1) return alert("已是第一页！"); if (newPage > appState.MAX_PAGE && appState.MAX_PAGE !== 999) return alert(`⚠️ 到底啦！`); appState.currentPage = newPage; appState.currentStateId = 'state_' + Date.now(); pushHistoryState({ type: 'list', category: appState.currentCategory, page: appState.currentPage, searchInput: document.getElementById('search-input').value, stateId: appState.currentStateId }); window.scrollTo({ top: 0, behavior: 'smooth' }); fetchVideos(appState.currentPage, false); };
 
-
 async function fetchAndParseAPI(url) {
     const token = "CosAppMakeBigMoney," + Math.floor(Date.now() / 1000);
     try {
@@ -79,7 +80,6 @@ async function fetchAndParseAPI(url) {
                         if (obj[field] !== undefined) {
                             let totalVal = Number(obj[field]); let limit = Number(obj.limit || 30);
                             if (totalVal > 0) { 
-                                // 这里接入了模块化的 appState.currentPage
                                 extractedTotalPages = (Math.ceil(totalVal/limit) < appState.currentPage && totalVal >= appState.currentPage) ? totalVal : Math.ceil(totalVal / limit); 
                                 break; 
                             }
@@ -89,8 +89,6 @@ async function fetchAndParseAPI(url) {
                 }
 
                 let videoList = Array.isArray(parsedData) ? parsedData : (parsedData.list || (parsedData.data && parsedData.data.list) || parsedData.data || parsedData.info || []);
-                
-                // 这里也接入了 appState.currentPage
                 return { 
                     list: videoList, 
                     maxPage: extractedTotalPages > 0 ? extractedTotalPages : (videoList.length === 30 ? 999 : appState.currentPage) 
@@ -100,7 +98,6 @@ async function fetchAndParseAPI(url) {
     } catch (error) { /* 容错忽略单个网络波动 */ }
     return { list: [], maxPage: 0 };
 }
-
 
 async function fetchVideos(pageNumber, isAppend = false) {
     if(appState.isFetching) return; appState.isFetching = true;
@@ -154,7 +151,8 @@ async function fetchVideos(pageNumber, isAppend = false) {
         if (video.is_vip === "1" || video.is_vip === true || (video.tags && video.tags.includes('独家'))) badgeHtml += `<div class="badge vip">VIP独家</div>`;
         badgeHtml += `<div class="badge channel">${video.channel_name || "同人"}</div>`;
 
-        html += `<div class="video-card" onclick="preparePlayer('${internalId}')"><div class="thumb-wrapper"><img class="thumb-bg" src="${video.photo || ''}" onerror="this.src='${errImg}'"><img class="thumb-img" src="${video.photo || ''}" onerror="this.src='${errImg}'">${badgeHtml}</div><div class="card-content"><h4 class="video-title" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</h4><div class="time-row"><span>📅 ${video.adddate || formatTime(video.created_at || video.time || video.vod_time)}</span>${video.addtime ? `<span>🕒 ${video.addtime}</span>` : ""}</div><div class="tag-row">${createJumpTags(video.cos_works, 'kw') + createJumpTags(video.cos_role || video.actor, 'kw')}</div></div></div>`;
+        // ⚠️ 终极修复：绝对指向 window.preparePlayer
+        html += `<div class="video-card" onclick="window.preparePlayer('${internalId}')"><div class="thumb-wrapper"><img class="thumb-bg" src="${video.photo || ''}" onerror="this.src='${errImg}'"><img class="thumb-img" src="${video.photo || ''}" onerror="this.src='${errImg}'">${badgeHtml}</div><div class="card-content"><h4 class="video-title" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</h4><div class="time-row"><span>📅 ${video.adddate || formatTime(video.created_at || video.time || video.vod_time)}</span>${video.addtime ? `<span>🕒 ${video.addtime}</span>` : ""}</div><div class="tag-row">${createJumpTags(video.cos_works, 'kw') + createJumpTags(video.cos_role || video.actor, 'kw')}</div></div></div>`;
     });
     
     if(isAppend) resultDiv.insertAdjacentHTML('beforeend', html); else resultDiv.innerHTML = html;
