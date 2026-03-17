@@ -1,7 +1,7 @@
 import { appState, saveCacheToStorage } from './state.js';
 import { expandKeyword, getPureText, formatDuration, formatTime, escapeHtml, createJumpTags, decryptData } from './utils.js';
 import { errImg } from './config.js';
-
+import './player.js';
 // 初始化从偏好加载网格
 if(localStorage.getItem('cos_layout')) window.setColumns(localStorage.getItem('cos_layout'), false);
 
