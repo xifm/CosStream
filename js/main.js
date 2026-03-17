@@ -65,38 +65,21 @@ async function fetchAndParseAPI(url) {
         if (json.code === 200 || json.code === 0) {
             const decryptedStr = decryptData(json.data);
             if (decryptedStr) {
-                // 1. 强力解包：防止后端二次套娃（把 JSON 又包成了 String）
-                let parsedData = JSON.parse(decryptedStr);
-                if (typeof parsedData === 'string') {
-                    try { parsedData = JSON.parse(parsedData); } catch(e) {}
-                }
-                if (parsedData.data && typeof parsedData.data === 'string' && parsedData.data.trim().startsWith('{')) {
-                    try { parsedData.data = JSON.parse(parsedData.data); } catch(e) {}
-                }
-
+                const parsedData = JSON.parse(decryptedStr); 
                 let extractedTotalPages = 0;
                 const searchTargets = [parsedData, parsedData.data, parsedData.info, parsedData.list, parsedData.page, json, json.data];
                 
                 for (let obj of searchTargets) {
                     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) continue;
-                    
-                    // 2. 扩充所有可能的页数字段
-                    for (let field of ['last_page', 'total_page', 'totalPage', 'pages', 'pagecount', 'page_count', 'max_page']) { 
-                        if (obj[field] !== undefined && obj[field] !== null) { 
-                            extractedTotalPages = Number(obj[field]); 
-                            break; 
-                        } 
+                    for (let field of ['last_page', 'total_page', 'totalPage', 'pages', 'pagecount', 'max_page']) { 
+                        if (obj[field] !== undefined) { extractedTotalPages = Number(obj[field]); break; } 
                     }
                     if (extractedTotalPages > 0) break;
-                    
-                    // 3. 恢复你原本的精妙判定！兼容 total 到底是页数还是条数
                     for (let field of ['total', 'count', 'totalCount', 'total_num', 'totalcnt', 'totalCnt']) {
-                        if (obj[field] !== undefined && obj[field] !== null) {
-                            let totalVal = Number(obj[field]); 
-                            // 动态从 URL 提取 limit，不写死 30
-                            let limit = Number(obj.limit || url.match(/limit=(\d+)/)?.[1] || 30);
-                            
+                        if (obj[field] !== undefined) {
+                            let totalVal = Number(obj[field]); let limit = Number(obj.limit || 30);
                             if (totalVal > 0) { 
+                                // 这里接入了模块化的 appState.currentPage
                                 extractedTotalPages = (Math.ceil(totalVal/limit) < appState.currentPage && totalVal >= appState.currentPage) ? totalVal : Math.ceil(totalVal / limit); 
                                 break; 
                             }
@@ -104,20 +87,17 @@ async function fetchAndParseAPI(url) {
                     }
                     if (extractedTotalPages > 0) break;
                 }
-                
+
                 let videoList = Array.isArray(parsedData) ? parsedData : (parsedData.list || (parsedData.data && parsedData.data.list) || parsedData.data || parsedData.info || []);
                 
-                // 4. 修复动态 limit 导致的假分页失效问题
-                let reqLimit = Number(url.match(/limit=(\d+)/)?.[1] || 30);
+                // 这里也接入了 appState.currentPage
                 return { 
                     list: videoList, 
-                    maxPage: extractedTotalPages > 0 ? extractedTotalPages : (videoList.length >= reqLimit ? 999 : appState.currentPage) 
+                    maxPage: extractedTotalPages > 0 ? extractedTotalPages : (videoList.length === 30 ? 999 : appState.currentPage) 
                 };
             }
         }
-    } catch (error) { 
-        console.error("API 解析或网络异常：", error); 
-    }
+    } catch (error) { /* 容错忽略单个网络波动 */ }
     return { list: [], maxPage: 0 };
 }
 
